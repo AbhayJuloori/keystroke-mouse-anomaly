@@ -48,7 +48,7 @@ Added normalized four-detector keystroke fusion, mouse EER after 1, 5, 10, 20, 5
 
 ### Split wording correction
 
-CMU chronology is verified from `sessionIndex`. Balabit has only within-session elapsed timestamps, so this pass removed any claim of verified cross-session chronology. Mouse fitting uses only the challenge's `training_files`; labeled `test_files` are scored afterward.
+CMU chronology is verified from `sessionIndex`. Balabit has only within-session elapsed timestamps, so the docs now state that session-to-session order cannot be checked. Mouse fitting uses only the challenge's `training_files`; labeled `test_files` are scored afterward.
 
 ## Pass 3
 

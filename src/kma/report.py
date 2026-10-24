@@ -259,21 +259,26 @@ This project evaluates per-user behavioral anomaly models on the CMU fixed-text 
 
 The best single keystroke detector was **{DISPLAY_NAMES[best_single]}**, with mean EER **{_fmt(keystroke[best_single]['mean_eer'])} ± {_fmt(keystroke[best_single]['std_eer'])}** across 51 users. Four-detector score fusion reached **{_fmt(keystroke['fusion']['mean_eer'])} ± {_fmt(keystroke['fusion']['std_eer'])}**. Mouse anomaly scoring reached global AUC **{_fmt(mouse['global_auc'])}**. The selected session risk model was **{MODEL_NAMES[risk['selected_model']]}**, with grouped out-of-fold AUC **{_fmt(final_stage['auc'])}** and EER **{_fmt(final_stage['eer'])}** after behavior, user-relative deviations, and SYNTHETIC device flags were combined.
 
-## Claims
+**Project page:** [abhayjuloori.github.io/keystroke-mouse-anomaly](https://abhayjuloori.github.io/keystroke-mouse-anomaly/), where you can type the benchmark password and see which of the 51 typing templates you match.
 
-1. "Fit per user anomaly detectors (scaled Manhattan distance, Isolation Forest, one class SVM, PyTorch autoencoder) on the CMU Keystroke Dynamics benchmark of 51 users and 20,400 typing samples, scored by equal error rate against impostor attempts."
-2. "Engineered speed, curvature, and click timing features from Balabit Mouse Dynamics Challenge sessions and blended them with synthetic device signals (emulator, rooted device, VPN) into one session risk score with SHAP reason codes."
-3. "Split every user's sessions by time to keep later attempts out of training, tracked false accept and false reject rates at fixed thresholds in MLflow, and served scoring through FastAPI with a drift check on per user scores."
+## What this project does
 
-Balabit does not provide cross-session timestamps. Claim 3 uses the verified CMU session split and a within-session elapsed-time split for every Balabit training file. Only the earliest {split['time_fraction']:.0%} of each training session supplies fitting actions. Later actions calibrate the fixed threshold and mouse drift reference.
+- **Keystroke dynamics.** One model per user on the CMU benchmark (51 people, 20,400 typings of `.tie5Roanl`, 31 timing features), with four detectors compared under the original Killourhy and Maxion protocol: scaled Manhattan distance, Isolation Forest, one-class SVM and a PyTorch autoencoder. Each is scored by equal error rate against 250 impostor attempts per user.
+- **Mouse dynamics.** Balabit sessions are cut into actions, and every action becomes speed, acceleration, curvature, angular velocity, straightness and click hold time. A per-user model scores how unlike its owner a session looks.
+- **Session risk.** The mouse score, per-user feature deviations and three SYNTHETIC device flags (emulator, rooted device, VPN) feed one 0 to 100 risk score. SHAP values on that model become the top three plain-language reasons.
+- **Time-aware evaluation.** Later data never trains a model. CMU trains on sessions 1 to 4 and tests on 5 to 8. Balabit files only record time inside each session, so each training session is cut at {split['time_fraction']:.0%} of its elapsed time: the earlier part fits the model, the later part sets thresholds and the drift reference.
+- **Tracking and serving.** Every run goes to MLflow with false accept and false reject rates at fixed thresholds. A FastAPI service scores keystrokes and mouse sessions and exposes a per-user drift check based on PSI.
 
-### Claim to evidence
+### Where things live
 
-| Claim | Code evidence | `docs/results.json` evidence |
+| Part | Code | `docs/results.json` |
 |---|---|---|
-| 1 | `src/kma/keystroke.py::protocol_split`, `train_keystroke_models` | `protocol.keystroke_users`, `protocol.keystroke_total_samples`, `keystroke.*.mean_eer` |
-| 2 | `src/kma/mouse.py::action_features`, `session_deviation_features`; `src/kma/risk.py::train_risk_model`, `reason_codes` | `risk.stages`, `risk.model_comparison`, `risk.synthetic_device_config` |
-| 3 | `src/kma/splits.py::time_split_actions`; `src/kma/keystroke.py::protocol_split`; `src/kma/pipeline.py::_verify_mlflow_metrics`; `src/kma/api.py::create_app` | `time_split`, `mlflow_metric_verification`, `mouse.fixed_train_time_holdout_p95`, `risk.operating_points`, `drift_demo` |
+| Keystroke protocol and detectors | `src/kma/keystroke.py` (`protocol_split`, `train_keystroke_models`) | `protocol`, `keystroke` |
+| Mouse actions and features | `src/kma/mouse.py` (`segment_actions`, `action_features`, `session_deviation_features`) | `mouse`, `mouse_per_user` |
+| Risk score and reason codes | `src/kma/risk.py` (`train_risk_model`, `reason_codes`) | `risk` |
+| Time split and leakage checks | `src/kma/splits.py` (`time_split_actions`), `src/kma/keystroke.py` | `time_split` |
+| MLflow logging and read-back | `src/kma/pipeline.py` (`_verify_mlflow_metrics`) | `mlflow_metric_verification` |
+| API and drift | `src/kma/api.py`, `src/kma/metrics.py` (`population_stability_index`) | `api_latency`, `drift_demo` |
 
 ## Keystroke results
 
@@ -532,7 +537,7 @@ Added normalized four-detector keystroke fusion, mouse EER after 1, 5, 10, 20, 5
 
 ### Split wording correction
 
-CMU chronology is verified from `sessionIndex`. Balabit has only within-session elapsed timestamps, so this pass removed any claim of verified cross-session chronology. Mouse fitting uses only the challenge's `training_files`; labeled `test_files` are scored afterward.
+CMU chronology is verified from `sessionIndex`. Balabit has only within-session elapsed timestamps, so the docs now state that session-to-session order cannot be checked. Mouse fitting uses only the challenge's `training_files`; labeled `test_files` are scored afterward.
 
 ## Pass 3
 
