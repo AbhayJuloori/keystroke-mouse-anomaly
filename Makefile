@@ -1,7 +1,7 @@
 PYTHON := ./.venv/bin/python
 ENV := PYTHONPATH=src MPLCONFIGDIR=/tmp/kma-matplotlib-cache XDG_CACHE_HOME=/tmp/kma-cache MLFLOW_ALLOW_FILE_STORE=true MLFLOW_DISABLE_AGENT_HINT=1
 
-.PHONY: setup data train test serve docker all
+.PHONY: setup data train test serve docker site all
 
 setup:
 	$(ENV) $(PYTHON) -c "import numpy,pandas,sklearn,torch,shap,mlflow,fastapi; print('Environment ready')"
@@ -21,4 +21,7 @@ serve:
 docker:
 	docker build -t keystroke-mouse-anomaly .
 
-all: data train test
+all: data train test site
+
+site:
+	$(ENV) $(PYTHON) scripts/export_site_data.py

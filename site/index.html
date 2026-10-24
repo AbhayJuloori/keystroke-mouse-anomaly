@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b0c0e">
+<title>Keystroke and Mouse Anomaly Detection · Abhay Juloori</title>
+<meta name="description" content="Per-user behavioral biometrics on the CMU keystroke benchmark and Balabit mouse data: four anomaly detectors, a session risk score with SHAP reason codes, a time split, MLflow tracking, and a FastAPI drift monitor.">
+<meta property="og:title" content="Same password. Different hands.">
+<meta property="og:description" content="Type the CMU benchmark password and see which of 51 real typing templates you match.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%230b0c0e'/><rect x='6' y='16' width='4' height='10' rx='1' fill='%23ffb547'/><rect x='12' y='9' width='4' height='17' rx='1' fill='%23ffb547'/><rect x='18' y='13' width='4' height='13' rx='1' fill='%235ad1ff'/><rect x='24' y='6' width='3' height='20' rx='1' fill='%23ff5a5f'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css?v=1">
+</head>
+<body>
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="Back to top">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="5" y="16" width="4" height="10" rx="1" fill="var(--accent)"/><rect x="11" y="9" width="4" height="17" rx="1" fill="var(--accent)"/><rect x="17" y="13" width="4" height="13" rx="1" fill="var(--genuine)"/><rect x="23" y="6" width="4" height="20" rx="1" fill="var(--impostor)"/></svg>
+      <span>Signature Lab</span>
+    </a>
+    <nav class="nav-links" aria-label="Sections">
+      <a href="#keystroke">01 Keystroke</a>
+      <a href="#mouse">02 Mouse</a>
+      <a href="#risk">03 Risk</a>
+      <a href="#split">04 Split</a>
+      <a href="#drift">05 Drift</a>
+      <a href="#serving">06 Serving</a>
+    </nav>
+    <div class="nav-right">
+      <button class="icon-btn" id="theme" type="button" aria-label="Toggle light and dark mode">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      </button>
+      <a class="btn" href="https://github.com/AbhayJuloori/keystroke-mouse-anomaly">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2.2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17.3 4.7 18.3 5 18.3 5c.7 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .5z"/></svg>
+        <span class="gh-label">GitHub</span>
+      </a>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <div class="eyebrow">Behavioral biometrics · CMU and Balabit data</div>
+      <h1>Same password.<br><em>Different hands.</em></h1>
+      <p class="lede">A password proves you know a secret. How you type it and how you move the mouse says whether you are the person who usually knows it. This project fits a model per user on public typing and mouse data, turns the result into one session risk score with plain-language reasons, and serves it with a drift check that watches each user's scores over time.</p>
+      <div class="kpis">
+        <div class="kpi"><b data-v="keystroke.summary.scaled_manhattan.mean_eer" data-f="3">-</b><span>Scaled Manhattan EER, vs 0.096 in the original paper</span></div>
+        <div class="kpi"><b data-v="keystroke.summary.isolation_forest.mean_eer" data-f="3">-</b><span>Best detector EER (Isolation Forest), 51 users</span></div>
+        <div class="kpi"><b data-v="mouse.mean_user_auc" data-f="3">-</b><span>Mean per-user mouse AUC, 10 users, <span data-v="mouse.labeled_sessions" data-f="0">-</span> labeled sessions</span></div>
+        <div class="kpi"><b><span data-v="api_latency.keystroke.p95_ms" data-f="1">-</span> ms</b><span>p95 keystroke scoring latency in FastAPI</span></div>
+      </div>
+    </div>
+
+    <div class="card" id="demo">
+      <div class="card-head"><span><span class="dot"></span>Live: type the benchmark password</span><span id="attempts">0 attempts</span></div>
+      <div class="card-body">
+        <div class="prompt" id="prompt" aria-hidden="true"></div>
+        <label class="muted" for="typeInput" style="font-size:.85rem">Type <code>.tie5Roanl</code> and press Enter, the way 51 people did 400 times each.</label>
+        <input id="typeInput" class="type-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder=".tie5Roanl">
+        <div class="demo-row">
+          <label for="claim">Claim to be</label>
+          <select id="claim"></select>
+          <span class="muted">threshold = 95th percentile of that user's own enrollment scores</span>
+        </div>
+        <div class="status" id="status">Timings never leave your browser.</div>
+        <div class="verdict">
+          <span class="badge idle" id="badge">waiting</span>
+          <p id="verdictText">Your hold and flight times get scored against the claimed user's template with the scaled Manhattan detector.</p>
+        </div>
+        <div class="holds" id="holds"></div>
+        <div class="hold-labels" id="holdLabels"></div>
+        <div class="legend"><span><i style="background:var(--accent)"></i>Your key hold time</span><span><i style="border:1px dashed var(--ink-3)"></i>Claimed user's average</span></div>
+        <svg class="chart" id="demoHist" viewBox="0 0 560 150" role="img" aria-label="Score distribution of genuine and impostor attempts with your score marked"></svg>
+        <div class="legend"><span><i style="background:var(--genuine)"></i>Genuine attempts</span><span><i style="background:var(--impostor)"></i>Impostor attempts</span><span><i style="background:var(--accent)"></i>You</span></div>
+        <p class="privacy">Closest of the 51 templates: <b id="closest" class="mono">type once to see</b></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="block" id="keystroke">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-num">01 · Keystroke</div>
+      <div>
+        <h2>Four detectors, one fixed protocol</h2>
+        <p>The CMU Keystroke Dynamics benchmark has 51 people typing <code>.tie5Roanl</code> 400 times across 8 sessions, 20,400 samples with 31 timing features each. Following Killourhy and Maxion, each user's model trains on sessions 1 to 4, is tested on that user's sessions 5 to 8, and faces 250 impostor attempts from the other 50 users. The score is equal error rate: the point where false accepts equal false rejects.</p>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-head"><span>Mean EER by detector, each dot is one user</span></div>
+        <div class="card-body"><svg class="chart" id="eerChart" viewBox="0 0 560 300" role="img" aria-label="Per user EER by detector"></svg>
+          <p class="note">Dashed line: 0.096, the scaled Manhattan EER reported by Killourhy and Maxion (2009). This reproduction gets <span data-v="keystroke.summary.scaled_manhattan.mean_eer" data-f="4"></span>.</p></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><span>Fixed thresholds from enrollment scores</span></div>
+        <div class="card-body table-wrap">
+          <table id="keyTable"><thead><tr><th>Detector</th><th class="num">EER</th><th class="num">FAR p95</th><th class="num">FRR p95</th><th class="num">FRR at FAR 1%</th></tr></thead><tbody></tbody></table>
+          <div class="callout"><p>The autoencoder trails the distance model. With 200 samples per user, a small network has little to learn from, and a per-feature distance scaled by the user's own spread is hard to beat. Averaging all four detectors after per-user normalization lands at <span data-v="keystroke.summary.fusion.mean_eer" data-f="4"></span>, between the best and the rest.</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="block" id="mouse">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-num">02 · Mouse</div>
+      <div>
+        <h2>Movement has a signature too</h2>
+        <p>Balabit sessions are raw pointer events. Each session is cut into actions at clicks and at pauses over 10 seconds, then every action becomes speed, acceleration, jerk, angular velocity, curvature, straightness, direction and click hold time. A per-user classifier learns that user's actions against everyone else's training actions. Move inside the pad to see the same features computed live.</p>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-head"><span>Live feature extraction</span><button class="btn" id="padClear" type="button" style="height:26px">Clear</button></div>
+        <div class="card-body">
+          <div class="pad" id="pad"><canvas id="padCanvas"></canvas><div class="hint" id="padHint">Move, click and drag here.<br>Color shows speed.</div></div>
+          <div class="stats">
+            <div><b id="sActions">0</b><span>actions</span></div>
+            <div><b id="sSpeed">-</b><span>mean speed px/s</span></div>
+            <div><b id="sCurv">-</b><span>mean curvature</span></div>
+            <div><b id="sClick">-</b><span>click hold ms</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><span>How much movement a decision needs</span></div>
+        <div class="card-body"><svg class="chart" id="actionsChart" viewBox="0 0 560 260" role="img" aria-label="EER by number of actions"></svg>
+          <p class="note">EER over all labeled test sessions when the score averages only the first k actions. A single action gives <span data-v="mouse.eer_vs_actions.0.eer" data-f="3"></span>. By 50 actions it reaches <span data-v="mouse.eer_vs_actions.4.eer" data-f="3"></span>.</p></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:20px">
+      <div class="card-head"><span>Per-user results on labeled test sessions</span><span>global AUC <span data-v="mouse.global_auc" data-f="3"></span></span></div>
+      <div class="card-body"><svg class="chart" id="mouseChart" viewBox="0 0 1100 230" role="img" aria-label="Per user mouse AUC and EER"></svg></div>
+    </div>
+  </div>
+</section>
+
+<section class="block" id="risk">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-num">03 · Risk score</div>
+      <div>
+        <h2>One number, three reasons</h2>
+        <p>The session risk score (0 to 100) combines the mouse anomaly score, eight per-user deviations (speed, curvature, straightness, click hold, acceleration, angular velocity, action duration) and three device flags: emulator, rooted device, VPN. The device flags are <b>synthetic</b>, generated from a seeded config at higher rates for impostor sessions, because no public dataset pairs mouse sessions with device signals. SHAP values on the final model become the top three reasons.</p>
+      </div>
+    </div>
+    <div class="grid-3" style="margin-bottom:20px">
+      <div class="card"><div class="card-body"><h3>Behavior only</h3><p class="mono" style="font-size:1.5rem;color:var(--ink);margin:0">AUC <span data-v="risk.stages.behavior_only.auc" data-f="3"></span></p><p class="note">Mouse anomaly score alone.</p></div></div>
+      <div class="card"><div class="card-body"><h3>+ per-user deviations</h3><p class="mono" style="font-size:1.5rem;color:var(--ink);margin:0">AUC <span data-v="risk.stages.behavior_plus_deviations.auc" data-f="3"></span></p><p class="note">Lower. Kept anyway, because they let a reason name the feature instead of saying behavior looks odd.</p></div></div>
+      <div class="card"><div class="card-body"><h3>+ synthetic device flags</h3><p class="mono" style="font-size:1.5rem;color:var(--ink);margin:0">AUC <span data-v="risk.stages.behavior_plus_deviations_plus_synthetic.auc" data-f="3"></span></p><p class="note">Any lift here comes from simulated flags, so it is not a real-world estimate.</p></div></div>
+    </div>
+    <div class="risk-cards" id="riskCards"></div>
+    <p class="note">All numbers from 5-fold cross-validation grouped by user, so no user is in both training and evaluation folds. Logistic regression beat gradient boosting on that grouped AUC and is the served model.</p>
+  </div>
+</section>
+
+<section class="block" id="split">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-num">04 · Time split</div>
+      <div>
+        <h2>Later attempts never train the model</h2>
+        <p>Random splits leak the future: a model that has seen tomorrow's typing looks better than it will be. Both datasets are split by time for every user, and the pipeline checks the split in code.</p>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="card"><div class="card-head"><span>CMU: split by session</span></div><div class="card-body">
+        <div class="strip"><div class="tr">1</div><div class="tr">2</div><div class="tr">3</div><div class="tr">4</div><div class="te">5</div><div class="te">6</div><div class="te">7</div><div class="te">8</div></div>
+        <div class="legend"><span><i style="background:var(--genuine)"></i>Enrollment, 200 samples per user</span><span><i style="background:var(--accent)"></i>Genuine test, 200 samples per user</span></div>
+        <ul class="checks" id="cmuChecks"></ul>
+      </div></div>
+      <div class="card"><div class="card-head"><span>Balabit: split inside every training session</span></div><div class="card-body">
+        <div class="session-bar"><div class="en">first 70% of elapsed time</div><div class="cut"></div><div class="ho">last 30%</div></div>
+        <div class="legend"><span><i style="background:var(--genuine)"></i>Fits the model and baselines</span><span><i style="background:var(--accent)"></i>Sets thresholds and drift reference</span><span><i style="background:var(--impostor)"></i>Actions crossing the cut are dropped</span></div>
+        <ul class="checks" id="balabitChecks"></ul>
+        <p class="note">Balabit files only carry time elapsed inside a session, so session-to-session order cannot be checked. Test sessions never touch fitting.</p>
+      </div></div>
+    </div>
+  </div>
+</section>
+
+<section class="block" id="drift">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-num">05 · Drift</div>
+      <div>
+        <h2>Watching each user's scores</h2>
+        <p><code>/drift/{user_id}</code> compares a rolling window of the scores a user has been served against scores the model never trained on, using population stability index (PSI). The replay below sends each user's genuine traffic through the API, then impostor traffic, and reads the drift endpoint at every checkpoint.</p>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <div class="controls">
+          <div class="seg" role="group" aria-label="Channel"><button type="button" data-ch="mouse" aria-pressed="true">Mouse</button><button type="button" data-ch="keystroke" aria-pressed="false">Keystroke</button></div>
+          <select id="driftUser" aria-label="User"></select>
+        </div>
+        <span id="driftSummary"></span>
+      </div>
+      <div class="card-body"><svg class="chart" id="driftChart" viewBox="0 0 1100 300" role="img" aria-label="PSI over replayed traffic"></svg>
+        <div class="legend"><span><i style="background:var(--genuine)"></i>Checkpoint after genuine traffic</span><span><i style="background:var(--impostor)"></i>Checkpoint after impostor traffic</span><span><i style="border-top:2px dashed var(--accent);height:0;margin-top:5px"></i>PSI 0.2 alert line</span></div>
+      </div>
+    </div>
+    <div class="grid-2" style="margin-top:20px">
+      <div class="card"><div class="card-head"><span>Drift replay at PSI 0.2</span></div><div class="card-body table-wrap">
+        <table id="driftTable"><thead><tr><th>Channel</th><th class="num">Users</th><th class="num">False drift, genuine</th><th class="num">Caught, all-impostor window</th></tr></thead><tbody></tbody></table>
+        <p class="note">Minimum windows come from sampling noise: with 10 bins, PSI under no change is about 9 × (1/n + 1/m), and the window must keep that under half the alert line. That gives 164 scores for keystroke.</p>
+      </div></div>
+      <div class="card"><div class="card-head"><span>Why keystroke drift fires on real users</span></div><div class="card-body">
+        <svg class="chart" id="agingChart" viewBox="0 0 560 220" role="img" aria-label="Genuine score relative to reference by session"></svg>
+        <p class="note">Median genuine score relative to the reference, by CMU session. People type the password differently as they practice it. On genuine traffic, a drift flag here means re-enroll the user, not an attack. The project reports this instead of raising the alert line after seeing it.</p>
+      </div></div>
+    </div>
+  </div>
+</section>
+
+<section class="block" id="serving">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-num">06 · Serving and tracking</div>
+      <div>
+        <h2>From notebook numbers to an API</h2>
+        <p>One command (<code>make all</code>) trains every model, logs every run to MLflow, writes the artifacts, replays traffic through the API, and regenerates the README and figures from <code>results.json</code>. The pipeline then reads MLflow back and fails if any fixed-threshold false accept or false reject metric is missing.</p>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="card"><div class="card-head"><span>FastAPI endpoints</span></div><div class="card-body">
+        <ul class="endpoints">
+          <li><span class="method">POST</span><div><code>/score/keystroke</code><span class="muted">31 timing features for a claimed user. Returns score, threshold, decision. p50 <span data-v="api_latency.keystroke.p50_ms" data-f="1"></span> ms, p95 <span data-v="api_latency.keystroke.p95_ms" data-f="1"></span> ms.</span></div></li>
+          <li><span class="method">POST</span><div><code>/score/session</code><span class="muted">Raw mouse events and optional device flags. Returns risk 0 to 100, decision and three reasons. p95 <span data-v="api_latency.session.p95_ms" data-f="1"></span> ms for 250 events.</span></div></li>
+          <li><span class="method">GET</span><div><code>/drift/{user_id}</code><span class="muted">PSI of the user's recent scores against their reference, with a verdict once the window is large enough.</span></div></li>
+          <li><span class="method">GET</span><div><code>/health</code><span class="muted">Artifact status.</span></div></li>
+        </ul>
+      </div></div>
+      <div class="card"><div class="card-head"><span>Fixed operating points</span></div><div class="card-body table-wrap">
+        <table id="opTable"><thead><tr><th>Model</th><th>Threshold</th><th class="num">FAR</th><th class="num">FRR</th></tr></thead><tbody></tbody></table>
+        <p class="note">Every row is logged as an MLflow metric. A lower false accept rate always costs false rejects; the table shows how much.</p>
+      </div></div>
+    </div>
+    <div class="callout" style="margin-top:28px"><p><b>Limits.</b> 51 typists and 10 mouse users are far too few for fairness claims or real identity decisions. The password is fixed text. Device signals are simulated. There is no live traffic. This is a careful benchmark study with a serving path, not a production system.</p></div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Abhay Juloori · Data: CMU Keystroke Dynamics Benchmark (Killourhy and Maxion, 2009), Balabit Mouse Dynamics Challenge</span>
+    <span><a href="https://github.com/AbhayJuloori/keystroke-mouse-anomaly">Source and full results</a> · <a href="https://abhayjuloori.github.io">Portfolio</a></span>
+  </div>
+</footer>
+<script src="app.js?v=1"></script>
+</body>
+</html>
