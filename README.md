@@ -102,7 +102,7 @@ The full risk score has FAR **0.0099** and FRR **0.6521** at its out-of-fold 1% 
 
 For each CMU subject, sessions 1 through 4 provide 200 enrollment samples and sessions 5 through 8 provide 200 later genuine test samples. The first five time-ordered samples from each other subject provide 250 impostor attempts. No later CMU session enters enrollment.
 
-Balabit files contain only elapsed timestamps within each session, so cross-session chronology cannot be verified. `time_split_actions` places actions that end within the earliest 70% of each training session into enrollment, places actions that start at or after the cut into the time hold-out, and drops actions that straddle the cut. Across all users this produced 42433 enrollment actions, 23005 hold-out actions, and 22 dropped straddlers. All computed leakage checks in `time_split.balabit.leakage_checks` passed. Test files remain fully outside fitting.
+Balabit files contain only elapsed timestamps within each session, so cross-session chronology cannot be verified. `time_split_actions` places actions that end within the earliest 70% of each training session into enrollment, places actions that start at or after the cut into the time hold-out, and drops actions that straddle the cut. Across all users this produced 42,433 enrollment actions, 23,005 hold-out actions, and 22 dropped straddlers. All computed leakage checks in `time_split.balabit.leakage_checks` passed. Test files remain fully outside fitting.
 
 The pipeline read its newly written MLflow runs back with `mlflow.search_runs`. It verified these fixed-threshold FAR and FRR metric keys on every applicable keystroke, mouse, and risk run: `fixed_train_time_holdout_p95.far`, `fixed_train_time_holdout_p95.frr`, `mean_far_at_train_p90`, `mean_far_at_train_p95`, `mean_far_at_train_p99`, `mean_frr_at_train_p90`, `mean_frr_at_train_p95`, `mean_frr_at_train_p99`, `operating_points.global_far_1pct.far`, `operating_points.global_far_1pct.frr`, `operating_points.global_far_5pct.far`, `operating_points.global_far_5pct.frr`.
 
@@ -124,9 +124,9 @@ The drift replay sends each user's genuine test traffic through the API, then im
 | Keystroke (CMU sessions 5 to 8, then other users) | 51 | 0.4544 | 2.3187 | 0.8431 | 1.0000 |
 | Mouse (labeled genuine, then impostor sessions) | 10 | 0.0168 | 0.2150 | 0.0053 | 1.0000 |
 
-Minimum windows come from sampling noise, not from the replay outcome. With 10 bins, a window of n scores and a reference of m scores, PSI under no real change is about 9 x (1/n + 1/m). The minimum window is the smallest n that keeps this at or below half the 0.2 threshold: 164 for keystroke (expected no-change PSI 0.0999). Mouse references hold a median of 2142.5000 hold-out actions per user, so 200 actions gives 0.0492.
+Minimum windows come from sampling noise, not from the replay outcome. With 10 bins, a window of n scores and a reference of m scores, PSI under no real change is about 9 x (1/n + 1/m). The minimum window is the smallest n that keeps this at or below half the 0.2 threshold: 164 for keystroke (expected no-change PSI 0.0999). Mouse references hold a median of 2,142 hold-out actions per user, so 200 actions gives 0.0492.
 
-Genuine keystroke drift is partly real. The median user's genuine score, relative to the reference median, rises from 1.0113 in session 5 to 1.1433 in session 8 as typing changes over time. Typing changes between sessions and over time (template aging), so on genuine traffic a drift flag is a re-enrollment signal rather than an attack signal. PSI 0.2 is too sensitive for CMU keystroke traffic without periodic re-enrollment, and this run does not re-enroll. Impostor windows sit far higher (median PSI 2.3187 versus 0.4544).
+Genuine keystroke drift is partly real. The median user's genuine score, relative to the reference median, rises from 1.0113 in session 5 to 1.1433 in session 8. Typing changes between sessions and over time (template aging), so on genuine traffic a drift flag is a re-enrollment signal rather than an attack signal. PSI 0.2 is too sensitive for CMU keystroke traffic without periodic re-enrollment, and this run does not re-enroll. Impostor windows sit far higher (median PSI 2.3187 versus 0.4544).
 
 Results at PSI 0.1 and 0.25, and per-checkpoint values, are in `drift_demo` in results.json.
 
@@ -144,7 +144,7 @@ make serve
 make docker
 ```
 
-`make docker` builds the image but does not run it. The requested validation does not build the image.
+`make docker` builds the image but does not run it.
 
 Keystroke scoring requires the exact 31 timing fields:
 

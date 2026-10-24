@@ -336,7 +336,7 @@ The full risk score has FAR **{_fmt(op1['far'])}** and FRR **{_fmt(op1['frr'])}*
 
 For each CMU subject, sessions 1 through 4 provide 200 enrollment samples and sessions 5 through 8 provide 200 later genuine test samples. The first five time-ordered samples from each other subject provide 250 impostor attempts. No later CMU session enters enrollment.
 
-Balabit files contain only elapsed timestamps within each session, so cross-session chronology cannot be verified. `time_split_actions` places actions that end within the earliest {split['time_fraction']:.0%} of each training session into enrollment, places actions that start at or after the cut into the time hold-out, and drops actions that straddle the cut. Across all users this produced {enrollment_actions} enrollment actions, {holdout_actions} hold-out actions, and {dropped_straddlers} dropped straddlers. All computed leakage checks in `time_split.balabit.leakage_checks` passed. Test files remain fully outside fitting.
+Balabit files contain only elapsed timestamps within each session, so cross-session chronology cannot be verified. `time_split_actions` places actions that end within the earliest {split['time_fraction']:.0%} of each training session into enrollment, places actions that start at or after the cut into the time hold-out, and drops actions that straddle the cut. Across all users this produced {enrollment_actions:,} enrollment actions, {holdout_actions:,} hold-out actions, and {dropped_straddlers} dropped straddlers. All computed leakage checks in `time_split.balabit.leakage_checks` passed. Test files remain fully outside fitting.
 
 The pipeline read its newly written MLflow runs back with `mlflow.search_runs`. It verified these fixed-threshold FAR and FRR metric keys on every applicable keystroke, mouse, and risk run: {mlflow_key_text}.
 
@@ -358,9 +358,9 @@ The drift replay sends each user's genuine test traffic through the API, then im
 | Keystroke (CMU sessions 5 to 8, then other users) | {key_drift['user_count']} | {_fmt(key_drift['median_genuine_psi'])} | {_fmt(key_drift['median_impostor_psi'])} | {_fmt(key_drift_standard['false_drift_rate'])} | {_fmt(key_drift_standard['pure_impostor_detection_rate'])} |
 | Mouse (labeled genuine, then impostor sessions) | {mouse_drift['user_count']} | {_fmt(mouse_drift['median_genuine_psi'])} | {_fmt(mouse_drift['median_impostor_psi'])} | {_fmt(mouse_drift_standard['false_drift_rate'])} | {_fmt(mouse_drift_standard['pure_impostor_detection_rate'])} |
 
-Minimum windows come from sampling noise, not from the replay outcome. With 10 bins, a window of n scores and a reference of m scores, PSI under no real change is about 9 x (1/n + 1/m). The minimum window is the smallest n that keeps this at or below half the 0.2 threshold: {key_drift['minimum_window']} for keystroke (expected no-change PSI {_fmt(results['drift_demo']['null_psi_at_minimum_window']['keystroke'])}). Mouse references hold a median of {_fmt(results['drift_demo']['mouse_reference_actions_per_user']['median'])} hold-out actions per user, so {mouse_drift['minimum_window']} actions gives {_fmt(results['drift_demo']['null_psi_at_minimum_window']['mouse_median_reference'])}.
+Minimum windows come from sampling noise, not from the replay outcome. With 10 bins, a window of n scores and a reference of m scores, PSI under no real change is about 9 x (1/n + 1/m). The minimum window is the smallest n that keeps this at or below half the 0.2 threshold: {key_drift['minimum_window']} for keystroke (expected no-change PSI {_fmt(results['drift_demo']['null_psi_at_minimum_window']['keystroke'])}). Mouse references hold a median of {results['drift_demo']['mouse_reference_actions_per_user']['median']:,.0f} hold-out actions per user, so {mouse_drift['minimum_window']} actions gives {_fmt(results['drift_demo']['null_psi_at_minimum_window']['mouse_median_reference'])}.
 
-Genuine keystroke drift is partly real. The median user's genuine score, relative to the reference median, rises from {_fmt(results['drift_demo']['keystroke_genuine_score_to_reference_median_ratio_by_session']['5'])} in session 5 to {_fmt(results['drift_demo']['keystroke_genuine_score_to_reference_median_ratio_by_session']['8'])} in session 8 as typing changes over time. Typing changes between sessions and over time (template aging), so on genuine traffic a drift flag is a re-enrollment signal rather than an attack signal. PSI 0.2 is too sensitive for CMU keystroke traffic without periodic re-enrollment, and this run does not re-enroll. Impostor windows sit far higher (median PSI {_fmt(key_drift['median_impostor_psi'])} versus {_fmt(key_drift['median_genuine_psi'])}).
+Genuine keystroke drift is partly real. The median user's genuine score, relative to the reference median, rises from {_fmt(results['drift_demo']['keystroke_genuine_score_to_reference_median_ratio_by_session']['5'])} in session 5 to {_fmt(results['drift_demo']['keystroke_genuine_score_to_reference_median_ratio_by_session']['8'])} in session 8. Typing changes between sessions and over time (template aging), so on genuine traffic a drift flag is a re-enrollment signal rather than an attack signal. PSI 0.2 is too sensitive for CMU keystroke traffic without periodic re-enrollment, and this run does not re-enroll. Impostor windows sit far higher (median PSI {_fmt(key_drift['median_impostor_psi'])} versus {_fmt(key_drift['median_genuine_psi'])}).
 
 Results at PSI 0.1 and 0.25, and per-checkpoint values, are in `drift_demo` in results.json.
 
@@ -378,7 +378,7 @@ make serve
 make docker
 ```
 
-`make docker` builds the image but does not run it. The requested validation does not build the image.
+`make docker` builds the image but does not run it.
 
 Keystroke scoring requires the exact 31 timing fields:
 
@@ -489,31 +489,35 @@ The drift demo replays one CMU user's 200 later genuine samples followed by 250 
     worse = min(risk["model_comparison"], key=lambda name: risk["model_comparison"][name]["auc"])
     experiment = f"""# Experiment log
 
-## 0. Pipeline compatibility check
+The project went through three iterations. Each section lists what changed and what the numbers did, including changes that made things worse.
 
-The first end-to-end attempt in Pass 1 stopped when MLflow rejected file-backed tracking without its compatibility opt-in. The pipeline set `MLFLOW_ALLOW_FILE_STORE=true` and restarted. No metrics from the stopped attempt were promoted.
+## First version
 
-## 1. Protocol implementation
+### Pipeline compatibility check
+
+The first end-to-end run stopped when MLflow rejected file-backed tracking without its compatibility opt-in. The pipeline set `MLFLOW_ALLOW_FILE_STORE=true` and restarted. No metrics from the stopped attempt were promoted.
+
+### Protocol implementation
 
 Implemented the CMU `sessionIndex` split and asserted 200 enrollment, 200 genuine test, and 250 impostor samples for every subject. The check passed for all 51 subjects.
 
-## 2. Keystroke baselines
+### Keystroke baselines
 
 Ran scaled Manhattan, Isolation Forest, one-class SVM, and a PyTorch autoencoder with settings fixed in code. {DISPLAY_NAMES[best_single]} produced the lowest single-detector mean EER at {_fmt(keystroke[best_single]['mean_eer'])}. No detector setting was selected from test EER.
 
-## 3. Mouse representation
+### Mouse representation
 
 Used pause and click action segmentation with kinematic features. The detector fits action-level user-versus-other classifiers because each user has only 5 to 7 genuine training sessions. It produced global AUC {_fmt(mouse['global_auc'])} and mean per-user AUC {_fmt(mouse['mean_user_auc'])}.
 
-## 4. Initial risk fusion
+### Initial risk fusion
 
-Pass 1 combined the behavioral anomaly scalar with SYNTHETIC device flags in logistic regression. Its limitations motivated the user-relative deviation features and candidate comparison below.
+The first version combined the behavioral anomaly scalar with SYNTHETIC device flags in logistic regression. Its limitations motivated the user-relative deviation features and candidate comparison below.
 
-## 5. Initial serving and monitoring
+### Initial serving and monitoring
 
-Pass 1 saved per-user detectors, served both modalities through FastAPI, and implemented process-local PSI monitoring.
+The first version saved per-user detectors, served both modalities through FastAPI, and implemented process-local PSI monitoring.
 
-## Pass 2
+## Second iteration: specific reasons and fixed thresholds
 
 ### User-relative mouse evidence
 
@@ -535,21 +539,21 @@ Added CMU FAR and FRR at enrollment p90, p95, and p99. Added mouse FAR and FRR a
 
 Added normalized four-detector keystroke fusion, mouse EER after 1, 5, 10, 20, 50, and all actions, a TestClient drift replay, 200-request endpoint latency measurements, Docker packaging, and focused unit tests. Added `mouse_eer_vs_actions.png` and `drift_demo.png`.
 
-### Split wording correction
+### What the Balabit split can show
 
 CMU chronology is verified from `sessionIndex`. Balabit has only within-session elapsed timestamps, so the docs now state that session-to-session order cannot be checked. Mouse fitting uses only the challenge's `training_files`; labeled `test_files` are scored afterward.
 
-## Pass 3
+## Third iteration: a time split for mouse data and a drift fix
 
 ### Within-session time split for Balabit
 
-Pass 2 left the Balabit side without a chronological split. `kma.splits.time_split_actions` now cuts every training session at {_fmt(results['time_split']['balabit']['time_fraction'])} of its elapsed time. Actions that start before the cut and end at or before it are enrollment; actions that start at or after it are the later hold-out; actions that straddle the cut are dropped. Per-user models and deviation baselines fit only on enrollment actions. The later hold-out sets each user's p95 threshold and drift reference. Test sessions are never used for fitting. All leakage checks in `time_split.balabit.leakage_checks` are computed by the code and were true on this run.
+The second iteration left the Balabit side without a chronological split. `kma.splits.time_split_actions` now cuts every training session at {_fmt(results['time_split']['balabit']['time_fraction'])} of its elapsed time. Actions that start before the cut and end at or before it are enrollment; actions that start at or after it are the later hold-out; actions that straddle the cut are dropped. Per-user models and deviation baselines fit only on enrollment actions. The later hold-out sets each user's p95 threshold and drift reference. Test sessions are never used for fitting. All leakage checks in `time_split.balabit.leakage_checks` are computed by the code and all came out true.
 
-Before (pass 2, challenge split only, leave-one-session-out thresholds): mouse global AUC 0.9312, mean user AUC 0.9407, mean user EER 0.1202, fixed p95 FAR 0.1506 and FRR 0.1144. After (this run): global AUC {_fmt(mouse['global_auc'])}, mean user AUC {_fmt(mouse['mean_user_auc'])}, mean user EER {_fmt(mouse['mean_user_eer'])}, fixed p95 FAR {_fmt(mouse['fixed_train_time_holdout_p95']['far'])} and FRR {_fmt(mouse['fixed_train_time_holdout_p95']['frr'])}. The models now see 70% of each training session, so some change is expected. Leave-one-session-out was dropped from serving.
+Before (second iteration, challenge split only, leave-one-session-out thresholds): mouse global AUC 0.9312, mean user AUC 0.9407, mean user EER 0.1202, fixed p95 FAR 0.1506 and FRR 0.1144. After: global AUC {_fmt(mouse['global_auc'])}, mean user AUC {_fmt(mouse['mean_user_auc'])}, mean user EER {_fmt(mouse['mean_user_eer'])}, fixed p95 FAR {_fmt(mouse['fixed_train_time_holdout_p95']['far'])} and FRR {_fmt(mouse['fixed_train_time_holdout_p95']['frr'])}. The models now see 70% of each training session, so some change is expected. Leave-one-session-out was dropped from serving.
 
 ### Drift check fix
 
-Pass 2 flagged drift on genuine keystroke traffic after 20 requests (PSI 7.93). Causes: the reference was in-sample enrollment scores, which sit lower than any unseen data; 20 scores into 10 bins left most bins empty; and the mouse reference had only five to seven session scores per user. Fixes: keystroke reference from leave-one-session-out folds within sessions 1 to 4; reference quantile bins with open ends; additive smoothing; minimum windows before any verdict; mouse drift moved to per-action scores against the later-in-time hold-out. A first rerun still flagged 83% of genuine keystroke checkpoints, because a 50-score window has an expected no-change PSI of about 0.22, above the threshold. The keystroke minimum window is now derived from that noise formula ({results['drift_demo']['keystroke']['minimum_window']} scores), and the remaining genuine drift is measured as template aging across sessions 5 to 8. The replay now covers all {results['drift_demo']['keystroke']['user_count']} CMU users and all {results['drift_demo']['mouse']['user_count']} Balabit users. PSI 0.2 stayed fixed as the rule; 0.1 and 0.25 are reported for context only.
+The second iteration flagged drift on genuine keystroke traffic after 20 requests (PSI 7.93). Causes: the reference was in-sample enrollment scores, which sit lower than any unseen data; 20 scores into 10 bins left most bins empty; and the mouse reference had only five to seven session scores per user. Fixes: keystroke reference from leave-one-session-out folds within sessions 1 to 4; reference quantile bins with open ends; additive smoothing; minimum windows before any verdict; mouse drift moved to per-action scores against the later-in-time hold-out. A first rerun still flagged 83% of genuine keystroke checkpoints, because a 50-score window has an expected no-change PSI of about 0.22, above the threshold. The keystroke minimum window is now derived from that noise formula ({results['drift_demo']['keystroke']['minimum_window']} scores), and the remaining genuine drift is measured as template aging across sessions 5 to 8. The replay now covers all {results['drift_demo']['keystroke']['user_count']} CMU users and all {results['drift_demo']['mouse']['user_count']} Balabit users. PSI 0.2 stayed fixed as the rule; 0.1 and 0.25 are reported for context only.
 
 ### MLflow read-back
 

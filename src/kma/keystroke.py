@@ -150,7 +150,7 @@ def _out_of_sample_manhattan_reference(
 def train_keystroke_models(
     csv_path: Path, artifact_dir: Path, seed: int = 42
 ) -> tuple[dict[str, Any], dict[str, list[dict[str, Any]]]]:
-    """Train and evaluate all four requested per-user detectors."""
+    """Train and evaluate the four per-user keystroke detectors."""
     torch.set_num_threads(1)
     data = pd.read_csv(csv_path)
     feature_names = [column for column in data.columns if column not in META_COLUMNS]
