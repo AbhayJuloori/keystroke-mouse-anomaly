@@ -1,0 +1,10 @@
+seed: 2026
+rates:
+  genuine:
+    emulator: 0.03
+    rooted_device: 0.05
+    vpn: 0.15
+  impostor:
+    emulator: 0.18
+    rooted_device: 0.25
+    vpn: 0.35

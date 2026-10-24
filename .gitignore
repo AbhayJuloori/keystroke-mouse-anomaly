@@ -1,0 +1,10 @@
+data/raw/
+.venv/
+mlruns/
+artifacts/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.cache/
+.coverage
+.DS_Store
